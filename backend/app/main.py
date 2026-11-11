@@ -13,7 +13,30 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILE = os.path.abspath(os.path.join(BASE_DIR, "data.json"))
 CONFIG_FILE = os.path.abspath(os.path.join(BASE_DIR, "config.json"))
-DEFAULT_VOLC_KEY = "ark-955e822c-cde0-427a-8686-85ca4ada387a-c191f"
+
+# 火山引擎 OCR / 方舟凭据：不在源码中硬编码，统一从部署环境变量或服务器私有 config.json 读取
+VOLC_ENV_AK = "VOLC_ARK_API_KEY"
+VOLC_ENV_SK = "VOLC_ARK_SECRET_KEY"
+
+
+def _get_volc_credentials() -> tuple:
+    """读取火山引擎凭据：优先服务器私有 config.json（后台可改），其次部署环境变量。"""
+    ak = os.environ.get(VOLC_ENV_AK, "").strip()
+    sk = os.environ.get(VOLC_ENV_SK, "").strip()
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f) or {}
+            ak = (config.get("volc_ak") or "").strip() or ak
+            sk = (config.get("volc_sk") or "").strip() or sk
+        except Exception:
+            pass
+    # 方舟（Ark）API Key 历史上同时填入 AK/SK 两个字段，这里保持兼容
+    if not sk and ak.startswith("ark-"):
+        sk = ak
+    if not ak and sk.startswith("ark-"):
+        ak = sk
+    return ak, sk
 
 app = FastAPI(title="Plate Query System Proxy API")
 
@@ -1345,8 +1368,8 @@ async def save_qr_config(payload: QrConfigPayload):
 
 
 class AdminConfigPayload(BaseModel):
-    volc_ak: str
-    volc_sk: str
+    volc_ak: Optional[str] = None
+    volc_sk: Optional[str] = None
 
 class SystemConfigPayload(BaseModel):
     authtoken: str
@@ -1446,15 +1469,15 @@ async def get_admin_page():
 
 @app.get("/api/admin/config")
 async def get_admin_config():
-    if not os.path.exists(CONFIG_FILE):
-        return {"success": True, "volc_ak": DEFAULT_VOLC_KEY, "volc_sk": DEFAULT_VOLC_KEY}
+    # 安全要求：接口不回传密钥明文，只返回“是否已配置”，密钥由管理员在后台重新录入
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            config = json.load(f)
+        ak, sk = _get_volc_credentials()
         return {
             "success": True,
-            "volc_ak": config.get("volc_ak", "") or DEFAULT_VOLC_KEY,
-            "volc_sk": config.get("volc_sk", "") or DEFAULT_VOLC_KEY
+            "volc_ak_configured": bool(ak),
+            "volc_sk_configured": bool(sk),
+            "volc_ak": "",
+            "volc_sk": "",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取配置失败: {e}")
@@ -1462,15 +1485,22 @@ async def get_admin_config():
 @app.post("/api/admin/config")
 async def save_admin_config(payload: AdminConfigPayload):
     try:
+        ak = (payload.volc_ak or "").strip()
+        sk = (payload.volc_sk or "").strip()
+        if not ak and not sk:
+            # 留空表示不修改，避免前端用掩码/空值覆盖已有密钥
+            return {"success": True, "volc_ak_configured": bool(_get_volc_credentials()[0])}
         config = {}
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                config = json.load(f)
-        config["volc_ak"] = payload.volc_ak.strip()
-        config["volc_sk"] = payload.volc_sk.strip()
+                config = json.load(f) or {}
+        if ak:
+            config["volc_ak"] = ak
+        if sk:
+            config["volc_sk"] = sk
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
-        return {"success": True}
+        return {"success": True, "volc_ak_configured": bool(ak), "volc_sk_configured": bool(sk)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存配置失败: {e}")
 
@@ -1544,18 +1574,8 @@ from fastapi import UploadFile, File
 @app.post("/api/admin/ocr-waybill")
 async def ocr_waybill(files: List[UploadFile] = File(...)):
     import asyncio
-    volc_ak = DEFAULT_VOLC_KEY
-    volc_sk = DEFAULT_VOLC_KEY
-    
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            volc_ak = config.get("volc_ak", "").strip() or DEFAULT_VOLC_KEY
-            volc_sk = config.get("volc_sk", "").strip() or DEFAULT_VOLC_KEY
-        except Exception:
-            pass
-    
+    volc_ak, volc_sk = _get_volc_credentials()
+
     if not volc_ak or not volc_sk:
         raise HTTPException(status_code=400, detail="火山引擎 Access Key (AK) 或 Secret Key (SK) 不能为空！")
     

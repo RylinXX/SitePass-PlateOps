@@ -1,5 +1,7 @@
 {
   "authtoken": "YOUR_TOKEN_HERE",
   "id": "YOUR_ID_HERE",
-  "worksitetype": "1"
+  "worksitetype": "1",
+  "volc_ak": "YOUR_VOLC_AK_OR_ARK_API_KEY",
+  "volc_sk": "YOUR_VOLC_SECRET_KEY"
 }

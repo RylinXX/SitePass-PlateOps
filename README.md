@@ -124,7 +124,7 @@ python -m pytest tests
 
 安全要求：
 
-- 来源平台 `authtoken`、火山引擎 AK/SK / Ark API Key 等凭据只保存在服务器私有 `config.json` 或部署环境变量中，禁止写入源码、README 或提交到 Git。
+- 来源平台 `authtoken`、火山引擎 AK/SK / Ark API Key 等凭据只保存在服务器私有 `config.json` 或部署环境变量中，禁止写入源码、README 或提交到 Git。火山引擎凭据的环境变量为 `VOLC_ARK_API_KEY` / `VOLC_ARK_SECRET_KEY`，二者也可只设 Ark Key；后台「接口配置」不再回显密钥明文，只提示是否已配置，留空保存表示保持原值。
 - 公开查询接口开启时建议设置 `public_api_key`，并通过 Header（`X-API-Key`）或 Query（`apikey`）传递；如无需对外提供，请在后台关闭公开查询。
 - 登录、验证码与来源授权流程由用户本人完成，系统仅做登录辅助，禁止绕过来源平台限制。
 

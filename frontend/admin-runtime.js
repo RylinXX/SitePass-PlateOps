@@ -325,8 +325,19 @@ async function loadVolcConfig() {
         const response = await fetch(`${BACKEND_URL}/api/admin/config`, { cache: "no-store" });
         const data = await response.json();
         if (data.success) {
-            if (dom.volcAkInput) dom.volcAkInput.value = data.volc_ak || "";
-            if (dom.volcSkInput) dom.volcSkInput.value = data.volc_sk || "";
+            // 后端不再回传密钥明文：输入框留空，仅用 placeholder 提示是否已配置
+            if (dom.volcAkInput) {
+                dom.volcAkInput.value = "";
+                dom.volcAkInput.placeholder = data.volc_ak_configured
+                    ? "已配置，留空表示不修改"
+                    : "请填写火山引擎 AK / Ark API Key";
+            }
+            if (dom.volcSkInput) {
+                dom.volcSkInput.value = "";
+                dom.volcSkInput.placeholder = data.volc_sk_configured
+                    ? "已配置，留空表示不修改"
+                    : "请填写 Secret Key（Ark Key 可与 AK 相同）";
+            }
         }
     } catch (err) {
         console.error("加载密钥配置失败:", err);
@@ -421,22 +432,28 @@ function copyPublicApiUrl() {
 async function saveVolcConfig() {
     const ak = dom.volcAkInput.value.trim();
     const sk = dom.volcSkInput.value.trim();
-    
-    if (!ak || !sk) {
-        alert("Access Key 和 Secret Key 不能为空！");
+
+    if (!ak && !sk) {
+        alert("未填写新密钥：留空表示保持现有配置不变。");
         return;
     }
+
+    const body = {};
+    if (ak) body.volc_ak = ak;
+    if (sk) body.volc_sk = sk;
 
     try {
         dom.saveVolcConfigBtn.disabled = true;
         const response = await fetch(`${BACKEND_URL}/api/admin/config`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ volc_ak: ak, volc_sk: sk })
+            body: JSON.stringify(body)
         });
         const data = await response.json();
         if (data.success) {
             alert("火山引擎密钥配置保存成功！");
+            if (dom.volcAkInput) dom.volcAkInput.value = "";
+            if (dom.volcSkInput) dom.volcSkInput.value = "";
         } else {
             alert("保存失败: " + (data.detail || "未知错误"));
         }
